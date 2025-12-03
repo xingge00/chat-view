@@ -1,7 +1,17 @@
 <script setup>
 import { computed, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { getChartConfig, getChartDefaultData } from "../configs";
+import { ArrowDown, ArrowRight } from "@element-plus/icons-vue";
+import { getAllConfigFields, getChartConfig, getChartDefaultData } from "../configs";
+import {
+  clearPersistedConfig,
+  clearPersistedRows,
+  cloneRows,
+  loadPersistedConfig,
+  loadPersistedRows,
+  persistConfig,
+  persistRows,
+} from "../utils/storage";
 import DataEditorDialog from "./DataEditorDialog.vue";
 
 const props = defineProps({
@@ -10,15 +20,6 @@ const props = defineProps({
     default: "line",
   },
 });
-const STORAGE_KEY_PREFIX = "chart-view:data";
-const isBrowser = typeof window !== "undefined";
-
-const cloneRows = (rows = []) =>
-  rows.map((item, index) => ({
-    id: item.id ?? `${Date.now()}-${index}`,
-    label: item.label ?? "",
-    value: Number(item.value) || 0,
-  }));
 
 const getDefaultRows = (type) => {
   const base = getChartDefaultData(type);
@@ -27,40 +28,6 @@ const getDefaultRows = (type) => {
   }
   const fallback = getChartDefaultData(type);
   return cloneRows(fallback?.length ? fallback : []);
-};
-
-const getStorageKey = (type) => `${STORAGE_KEY_PREFIX}:${type}`;
-
-const loadPersistedRows = (type) => {
-  if (!isBrowser) return [];
-  try {
-    const raw = window.localStorage?.getItem(getStorageKey(type));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return cloneRows(parsed).filter((item) => item.label);
-  } catch (error) {
-    console.warn("加载持久化数据失败", error);
-    return [];
-  }
-};
-
-const persistRows = (type, rows) => {
-  if (!isBrowser) return;
-  try {
-    window.localStorage?.setItem(getStorageKey(type), JSON.stringify(rows));
-  } catch (error) {
-    console.warn("保存持久化数据失败", error);
-  }
-};
-
-const clearPersistedRows = (type) => {
-  if (!isBrowser) return;
-  try {
-    window.localStorage?.removeItem(getStorageKey(type));
-  } catch (error) {
-    console.warn("清理持久化数据失败", error);
-  }
 };
 
 // 数据行
@@ -79,22 +46,40 @@ const chartConfig = reactive({
   chartType: props.chartType,
 });
 
-// 获取当前图表类型的配置项
-const configFields = computed(() => getChartConfig(props.chartType));
+// 获取当前图表类型的配置分组
+const configGroups = computed(() => getChartConfig(props.chartType));
 
-// 可见的配置项（根据 showWhen 条件过滤）
-const visibleConfigFields = computed(() =>
-  configFields.value.filter((field) => {
+// 分组折叠状态
+const collapsedGroups = ref({});
+
+// 初始化分组折叠状态
+const initCollapsedState = () => {
+  configGroups.value.forEach((group) => {
+    if (!(group.group in collapsedGroups.value)) {
+      collapsedGroups.value[group.group] = group.collapsed ?? false;
+    }
+  });
+};
+
+// 切换分组折叠状态
+const toggleGroup = (groupKey) => {
+  collapsedGroups.value[groupKey] = !collapsedGroups.value[groupKey];
+};
+
+// 获取分组内可见的字段
+const getVisibleFields = (group) => {
+  return (group.fields || []).filter((field) => {
     if (typeof field.showWhen === "function") {
       return field.showWhen(chartConfig);
     }
     return true;
-  })
-);
+  });
+};
 
 // 初始化配置默认值
-const initConfigDefaults = () => {
-  configFields.value.forEach((field) => {
+const initConfigDefaults = (type) => {
+  const allFields = getAllConfigFields(type);
+  allFields.forEach((field) => {
     if (field.type === "action") {
       return;
     }
@@ -104,12 +89,42 @@ const initConfigDefaults = () => {
   });
 };
 
+// 应用持久化的配置
+const applyPersistedConfig = (type) => {
+  const stored = loadPersistedConfig(type);
+  if (stored) {
+    Object.keys(stored).forEach((key) => {
+      if (key !== "chartType") {
+        chartConfig[key] = stored[key];
+      }
+    });
+  }
+};
+
+// 保存配置到本地存储
+const saveConfig = () => {
+  const configToSave = { ...chartConfig };
+  delete configToSave.chartType;
+  persistConfig(chartConfig.chartType, configToSave);
+};
+
+// 监听配置变化，自动保存
+watch(
+  chartConfig,
+  () => {
+    saveConfig();
+  },
+  { deep: true }
+);
+
 // 监听图表类型变化
 watch(
   () => props.chartType,
   (newType) => {
     chartConfig.chartType = newType;
-    initConfigDefaults();
+    initConfigDefaults(newType);
+    applyPersistedConfig(newType);
+    initCollapsedState();
     applyDataForChartType(newType);
   },
   { immediate: true }
@@ -139,9 +154,10 @@ const handleDataSave = (rows) => {
   persistRows(chartConfig.chartType, sanitized);
 };
 
+// 重置图表数据
 const handleResetData = async () => {
   await ElMessageBox.confirm(
-    "重置后当前图表的数据将恢复为默认示例，已保存的数据也会被清空，是否继续？",
+    "重置后图表数据将恢复为默认示例，是否继续？",
     "确认重置数据",
     {
       type: "warning",
@@ -149,9 +165,58 @@ const handleResetData = async () => {
       cancelButtonText: "取消",
     }
   );
-  clearPersistedRows(chartConfig.chartType);
-  dataRows.value = getDefaultRows(chartConfig.chartType);
-  ElMessage.success("图表数据已恢复为默认示例");
+  const type = chartConfig.chartType;
+  clearPersistedRows(type);
+  dataRows.value = getDefaultRows(type);
+  ElMessage.success("图表数据已重置");
+};
+
+// 重置配置项
+const handleResetConfig = async () => {
+  await ElMessageBox.confirm(
+    "重置后配置项将恢复为默认值，是否继续？",
+    "确认重置配置",
+    {
+      type: "warning",
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+    }
+  );
+  const type = chartConfig.chartType;
+  clearPersistedConfig(type);
+  const allFields = getAllConfigFields(type);
+  allFields.forEach((field) => {
+    if (field.type !== "action" && field.field in chartConfig) {
+      chartConfig[field.field] = field.default;
+    }
+  });
+  ElMessage.success("配置项已重置");
+};
+
+// 重置全部（数据 + 配置）
+const handleResetAll = async () => {
+  await ElMessageBox.confirm(
+    "重置后图表数据和配置项将全部恢复为默认状态，是否继续？",
+    "确认重置全部",
+    {
+      type: "warning",
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+    }
+  );
+  const type = chartConfig.chartType;
+  // 重置数据
+  clearPersistedRows(type);
+  dataRows.value = getDefaultRows(type);
+  // 重置配置
+  clearPersistedConfig(type);
+  const allFields = getAllConfigFields(type);
+  allFields.forEach((field) => {
+    if (field.type !== "action" && field.field in chartConfig) {
+      chartConfig[field.field] = field.default;
+    }
+  });
+  ElMessage.success("数据和配置已全部重置");
 };
 
 const handleFieldAction = async (field) => {
@@ -250,7 +315,9 @@ const chartOption = computed(() => {
   // 公共配置
   const baseOption = {
     title: {
+      show: chartConfig.showTitle !== false,
       text: chartConfig.title || "",
+      left: chartConfig.titlePosition || "left",
     },
     tooltip: {
       trigger: props.chartType === "pie" ? "item" : "axis",
@@ -286,8 +353,14 @@ const chartOption = computed(() => {
   return { ...baseOption, ...specificOption };
 });
 
+const chartSize = computed(() => ({
+  width: Number(chartConfig.chartWidth) || 600,
+  height: Number(chartConfig.chartHeight) || 400,
+}));
+
 defineExpose({
   chartOption,
+  chartSize,
 });
 </script>
 
@@ -297,6 +370,12 @@ defineExpose({
       <div class="config-panel__title">
         配置面板
       </div>
+      <el-button size="small" @click="handleResetConfig">
+        重置配置
+      </el-button>
+      <el-button size="small" type="danger" plain @click="handleResetAll">
+        重置全部
+      </el-button>
     </div>
 
     <div class="config-panel__section config-panel__data-section">
@@ -335,73 +414,98 @@ defineExpose({
         </li>
       </ul>
       <div v-else class="config-panel__data-empty">
-        暂无数据，请点击“可视化编辑”开始配置
+        暂无数据，请点击"编辑"开始配置
       </div>
     </div>
 
     <div class="config-panel__content">
+      <!-- 分组配置 -->
       <div
-        v-for="field in visibleConfigFields"
-        :key="field.field"
-        class="config-panel__field"
+        v-for="group in configGroups"
+        :key="group.group"
+        class="config-panel__group"
       >
-        <label class="config-panel__label">{{ field.label }}</label>
-
-        <!-- 输入框 -->
-        <el-input
-          v-if="field.type === 'input'"
-          v-model="chartConfig[field.field]"
-          :placeholder="field.placeholder"
-          size="small"
-        />
-
-        <!-- 开关 -->
-        <el-switch
-          v-else-if="field.type === 'switch'"
-          v-model="chartConfig[field.field]"
-        />
-
-        <!-- 选择器 -->
-        <el-select
-          v-else-if="field.type === 'select'"
-          v-model="chartConfig[field.field]"
-          size="small"
-          style="width: 100%"
+        <div
+          class="config-panel__group-header"
+          @click="toggleGroup(group.group)"
         >
-          <el-option
-            v-for="opt in field.options"
-            :key="opt.value"
-            :label="opt.label"
-            :value="opt.value"
-          />
-        </el-select>
+          <el-icon class="config-panel__group-icon">
+            <ArrowDown v-if="!collapsedGroups[group.group]" />
+            <ArrowRight v-else />
+          </el-icon>
+          <span class="config-panel__group-label">{{ group.groupLabel }}</span>
+        </div>
 
-        <!-- 颜色选择器 -->
-        <el-color-picker
-          v-else-if="field.type === 'color'"
-          v-model="chartConfig[field.field]"
-          show-alpha
-        />
+        <transition name="collapse">
+          <div
+            v-show="!collapsedGroups[group.group]"
+            class="config-panel__group-content"
+          >
+            <div
+              v-for="field in getVisibleFields(group)"
+              :key="field.field"
+              class="config-panel__field"
+            >
+              <label class="config-panel__label">{{ field.label }}</label>
 
-        <!-- 滑块 -->
-        <el-slider
-          v-else-if="field.type === 'slider'"
-          v-model="chartConfig[field.field]"
-          :min="field.min"
-          :max="field.max"
-          :step="field.step"
-          :show-tooltip="true"
-        />
+              <!-- 输入框 -->
+              <el-input
+                v-if="field.type === 'input'"
+                v-model="chartConfig[field.field]"
+                :placeholder="field.placeholder"
+                size="small"
+              />
 
-        <el-button
-          v-else-if="field.type === 'action'"
-          type="warning"
-          plain
-          size="small"
-          @click="handleFieldAction(field)"
-        >
-          {{ field.buttonLabel || field.label }}
-        </el-button>
+              <!-- 开关 -->
+              <el-switch
+                v-else-if="field.type === 'switch'"
+                v-model="chartConfig[field.field]"
+              />
+
+              <!-- 选择器 -->
+              <el-select
+                v-else-if="field.type === 'select'"
+                v-model="chartConfig[field.field]"
+                size="small"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="opt in field.options"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+
+              <!-- 颜色选择器 -->
+              <el-color-picker
+                v-else-if="field.type === 'color'"
+                v-model="chartConfig[field.field]"
+                show-alpha
+              />
+
+              <!-- 滑块 -->
+              <el-slider
+                v-else-if="field.type === 'slider'"
+                v-model="chartConfig[field.field]"
+                :min="field.min"
+                :max="field.max"
+                :step="field.step"
+                :show-tooltip="true"
+              />
+
+              <el-button
+                v-else-if="field.type === 'action'"
+                type="warning"
+                plain
+                size="small"
+                @click="handleFieldAction(field)"
+              >
+                {{ field.buttonLabel || field.label }}
+              </el-button>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
 
@@ -506,7 +610,46 @@ defineExpose({
   &__content {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+  }
+
+  &__group {
+    background: #f9fafb;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  &__group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+
+    &:hover {
+      background: #f3f4f6;
+    }
+  }
+
+  &__group-icon {
+    font-size: 12px;
+    color: #6b7280;
+    transition: transform 0.2s;
+  }
+
+  &__group-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  &__group-content {
+    padding: 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   &__field {
@@ -520,5 +663,26 @@ defineExpose({
     font-weight: 500;
     color: #374151;
   }
+}
+
+// 折叠动画
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
+  max-height: 500px;
 }
 </style>

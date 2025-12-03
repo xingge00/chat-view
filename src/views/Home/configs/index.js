@@ -28,10 +28,16 @@ export const chartDataDefaults = {
   pie: pieSampleData,
 };
 
-// 获取完整配置（公共配置 + 图表特定配置）
+// 获取完整配置（公共配置 + 图表特定配置）- 返回分组结构
 export function getChartConfig(chartType) {
   const specificConfig = chartConfigMap[chartType] || [];
   return [...commonConfig, ...specificConfig];
+}
+
+// 获取所有配置字段（扁平化，用于初始化默认值）
+export function getAllConfigFields(chartType) {
+  const groups = getChartConfig(chartType);
+  return groups.flatMap((group) => group.fields || []);
 }
 
 export function getChartDefaultData(chartType) {

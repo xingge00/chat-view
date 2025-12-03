@@ -15,6 +15,18 @@ const chartOption = computed(() => {
   return configPanelRef.value?.chartOption ?? {};
 });
 
+const chartSize = computed(() => {
+  const sizeData = configPanelRef.value?.chartSize;
+  if (!sizeData) {
+    return { width: 600, height: 400 };
+  }
+  const sizeValue = sizeData ?? {};
+  return {
+    width: Number(sizeValue.width) || 600,
+    height: Number(sizeValue.height) || 400,
+  };
+});
+
 const handleExportImage = () => {
   try {
     const dataUrl = chartViewRef.value?.exportChartImage?.("png", {
@@ -55,7 +67,12 @@ const handleExportImage = () => {
           </el-button>
         </div>
         <div class="chart-view">
-          <VChart ref="chartViewRef" :option="chartOption" :height="400" :width="600" />
+          <VChart
+            ref="chartViewRef"
+            :option="chartOption"
+            :height="chartSize.height"
+            :width="chartSize.width"
+          />
         </div>
       </section>
       <ConfigPanel ref="configPanelRef" :chart-type="currentChartType" />
@@ -67,7 +84,6 @@ const handleExportImage = () => {
 .home-page {
   box-sizing: border-box;
   width: 100%;
-  min-height: calc(100vh - 40px);
   padding: 20px;
   background: #f4f6fb;
   overflow: hidden;
@@ -76,6 +92,7 @@ const handleExportImage = () => {
     display: flex;
     gap: 20px;
     align-items: stretch;
+    min-height: calc(100vh - 40px);
     &__preview {
       background: #ededf0;
       border-radius: 14px;
