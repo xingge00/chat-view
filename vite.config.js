@@ -2,7 +2,7 @@ import { resolve } from 'path'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import htmlMinifierTerser from 'vite-plugin-html-minifier-terser'
-import legacy from '@vitejs/plugin-legacy'
+// import legacy from '@vitejs/plugin-legacy'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -11,12 +11,12 @@ export default defineConfig(({ mode }) => {
     plugins: [
       vue(),
       htmlMinifierTerser(),
-      legacy({
-        targets: ['defaults', 'ie >= 11', 'chrome >= 49'], // 需要兼容的目标列表，可以设置多个
-        additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
-        renderLegacyChunks: true,
-        modernPolyfills: true,
-      }),
+      // legacy({
+      //   targets: ['defaults', 'ie >= 11', 'chrome >= 49'], // 需要兼容的目标列表，可以设置多个
+      //   additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
+      //   renderLegacyChunks: true,
+      //   modernPolyfills: true,
+      // }),
     ],
     resolve: {
       alias: [{ find: '@', replacement: resolve(__dirname, 'src') }],

@@ -1,22 +1,30 @@
 {
-    "extends":"@mistjs/eslint-config-vue",
+    "extends": "@mistjs/eslint-config-vue",
     "rules": {
-        "vue/v-on-event-hyphenation": ["warn", "never", { "autofix": true }],
-        "vue/no-reserved-keys":"off",
-        
+        "vue/v-on-event-hyphenation": [
+            "warn",
+            "never",
+            {
+                "autofix": true
+            }
+        ],
+        "vue/no-reserved-keys": "off",
         "no-unused-vars": "off",
         "vue/no-unused-vars": "off",
         "no-console": "off",
         "vue/component-tags-order": "off",
-        "curly":"off",
+        "curly": "off",
         "brace-style": "off",
         "@typescript-eslint/brace-style": "off",
         "vue/html-self-closing": "off",
-        
         "no-use-before-define": "off",
         "@typescript-eslint/no-use-before-define": "off",
         "dot-notation": "off",
         "vue/dot-notation": "off",
-        "prefer-promise-reject-errors": "off"
+        "prefer-promise-reject-errors": "off",
+        "@typescript-eslint/quotes": "off",
+        "@typescript-eslint/semi": "off",
+        "arrow-parens": "off",
+        "@typescript-eslint/comma-dangle": "off"
     }
 }
