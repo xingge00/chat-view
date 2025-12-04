@@ -105,3 +105,45 @@ export const lineConfig = [
     ],
   },
 ];
+
+/**
+ * 生成折线图 ECharts 配置
+ * @param {Object} config - 图表配置对象
+ * @param {Array} data - 图表数据 [{ label, value }, ...]
+ * @returns {Object} ECharts series 配置
+ */
+export function buildLineOption(config, data) {
+  const xData = data.map((item) => item.label);
+  const yData = data.map((item) => item.value);
+
+  return {
+    xAxis: {
+      type: "category",
+      data: xData,
+      name: config.xAxisLabel || "",
+    },
+    yAxis: {
+      type: "value",
+      name: config.yAxisLabel || "",
+    },
+    series: [
+      {
+        type: "line",
+        data: yData,
+        smooth: config.smooth || false,
+        areaStyle: config.showArea
+          ? { opacity: config.areaOpacity || 0.3 }
+          : null,
+        lineStyle: {
+          width: config.lineWidth || 2,
+          color: config.lineColor || "#5470c6",
+        },
+        itemStyle: {
+          color: config.lineColor || "#5470c6",
+        },
+        showSymbol: config.showDataPoints !== false,
+        symbolSize: config.pointSize || 4,
+      },
+    ],
+  };
+}

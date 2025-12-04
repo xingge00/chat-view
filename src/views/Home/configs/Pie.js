@@ -110,3 +110,60 @@ export const pieConfig = [
     ],
   },
 ];
+
+/**
+ * 获取标签格式化函数
+ * @param {string} format - 标签格式类型
+ * @returns {string} ECharts 格式化字符串
+ */
+function getLabelFormatter(format) {
+  switch (format) {
+    case "value":
+      return "{c}";
+    case "percent":
+      return "{d}%";
+    case "name-value":
+      return "{b}: {c}";
+    case "name-percent":
+      return "{b}: {d}%";
+    default:
+      return "{b}";
+  }
+}
+
+/**
+ * 生成饼图 ECharts 配置
+ * @param {Object} config - 图表配置对象
+ * @param {Array} data - 图表数据 [{ label, value }, ...]
+ * @returns {Object} ECharts series 配置
+ */
+export function buildPieOption(config, data) {
+  const seriesData = data.map((item) => ({
+    name: item.label,
+    value: item.value,
+  }));
+
+  return {
+    series: [
+      {
+        type: "pie",
+        data: seriesData,
+        radius: [
+          `${config.innerRadius || 0}%`,
+          `${config.outerRadius || 70}%`,
+        ],
+        roseType: config.roseType === "none" ? false : config.roseType,
+        label: {
+          show: config.showLabel !== false,
+          position: config.labelPosition || "outside",
+          formatter: getLabelFormatter(config.labelFormatter || "name"),
+        },
+        itemStyle: {
+          borderRadius: config.borderRadius || 0,
+          borderWidth: config.borderWidth || 0,
+          borderColor: "#fff",
+        },
+      },
+    ],
+  };
+}

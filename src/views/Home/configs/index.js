@@ -1,7 +1,7 @@
 // 图表配置入口文件
 import { commonConfig } from './common';
-import { lineConfig, lineSampleData } from './Line';
-import { pieConfig, pieSampleData } from './Pie';
+import { buildLineOption, lineConfig, lineSampleData } from './Line';
+import { buildPieOption, pieConfig, pieSampleData } from './Pie';
 
 // 图表类型列表
 export const chartTypes = [
@@ -23,9 +23,16 @@ export const chartConfigMap = {
   pie: pieConfig,
 };
 
+// 图表默认数据映射
 export const chartDataDefaults = {
   line: lineSampleData,
   pie: pieSampleData,
+};
+
+// 图表构建函数映射
+export const chartBuilderMap = {
+  line: buildLineOption,
+  pie: buildPieOption,
 };
 
 // 获取完整配置（公共配置 + 图表特定配置）- 返回分组结构
@@ -40,8 +47,33 @@ export function getAllConfigFields(chartType) {
   return groups.flatMap((group) => group.fields || []);
 }
 
+// 获取图表默认数据
 export function getChartDefaultData(chartType) {
   return chartDataDefaults[chartType] || [];
 }
 
-export { commonConfig, lineConfig, pieConfig, lineSampleData, pieSampleData };
+/**
+ * 构建图表配置
+ * @param {string} chartType - 图表类型
+ * @param {Object} config - 图表配置对象
+ * @param {Array} data - 图表数据
+ * @returns {Object} ECharts 配置对象
+ */
+export function buildChartOption(chartType, config, data) {
+  const builder = chartBuilderMap[chartType];
+  if (builder) {
+    return builder(config, data);
+  }
+  // 默认返回空配置
+  return {};
+}
+
+export {
+  commonConfig,
+  lineConfig,
+  pieConfig,
+  lineSampleData,
+  pieSampleData,
+  buildLineOption,
+  buildPieOption,
+};

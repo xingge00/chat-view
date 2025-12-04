@@ -1,17 +1,8 @@
 <script setup>
-import { computed, reactive, ref, watch } from "vue";
+import { toRef } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowDown, ArrowRight } from "@element-plus/icons-vue";
-import { getAllConfigFields, getChartConfig, getChartDefaultData } from "../configs";
-import {
-  clearPersistedConfig,
-  clearPersistedRows,
-  cloneRows,
-  loadPersistedConfig,
-  loadPersistedRows,
-  persistConfig,
-  persistRows,
-} from "../utils/storage";
+import { useChartConfig, useChartData, useChartOption } from "../hooks";
 import DataEditorDialog from "./DataEditorDialog.vue";
 
 const props = defineProps({
@@ -21,342 +12,76 @@ const props = defineProps({
   },
 });
 
-const getDefaultRows = (type) => {
-  const base = getChartDefaultData(type);
-  if (base?.length) {
-    return cloneRows(base);
-  }
-  const fallback = getChartDefaultData(type);
-  return cloneRows(fallback?.length ? fallback : []);
-};
+// 将 props.chartType 转换为 ref，以便传递给 hooks
+const chartTypeRef = toRef(props, "chartType");
 
-// 数据行
-const dataRows = ref(getDefaultRows(props.chartType));
+// 使用图表配置 hook
+const {
+  chartConfig,
+  configGroups,
+  collapsedGroups,
+  toggleGroup,
+  getVisibleFields,
+  resetConfig,
+} = useChartConfig({ chartType: chartTypeRef });
 
-const applyDataForChartType = (type) => {
-  const stored = loadPersistedRows(type);
-  dataRows.value = stored.length ? stored : getDefaultRows(type);
-};
+// 使用图表数据 hook
+const {
+  dataRows,
+  dataEditorVisible,
+  chartData,
+  dataPreview,
+  openDataEditor,
+  handleDataSave,
+  resetData,
+} = useChartData({ chartType: chartTypeRef });
 
-const dataEditorVisible = ref(false);
-
-// 图表配置
-const chartConfig = reactive({
-  title: "护理质控巡检",
-  chartType: props.chartType,
+// 使用图表选项 hook
+const { chartOption, chartSize } = useChartOption({
+  chartType: chartTypeRef,
+  chartConfig,
+  chartData,
 });
 
-// 获取当前图表类型的配置分组
-const configGroups = computed(() => getChartConfig(props.chartType));
-
-// 分组折叠状态
-const collapsedGroups = ref({});
-
-// 初始化分组折叠状态
-const initCollapsedState = () => {
-  configGroups.value.forEach((group) => {
-    if (!(group.group in collapsedGroups.value)) {
-      collapsedGroups.value[group.group] = group.collapsed ?? false;
-    }
-  });
-};
-
-// 切换分组折叠状态
-const toggleGroup = (groupKey) => {
-  collapsedGroups.value[groupKey] = !collapsedGroups.value[groupKey];
-};
-
-// 获取分组内可见的字段
-const getVisibleFields = (group) => {
-  return (group.fields || []).filter((field) => {
-    if (typeof field.showWhen === "function") {
-      return field.showWhen(chartConfig);
-    }
-    return true;
-  });
-};
-
-// 初始化配置默认值
-const initConfigDefaults = (type) => {
-  const allFields = getAllConfigFields(type);
-  allFields.forEach((field) => {
-    if (field.type === "action") {
-      return;
-    }
-    if (!(field.field in chartConfig)) {
-      chartConfig[field.field] = field.default;
-    }
-  });
-};
-
-// 应用持久化的配置
-const applyPersistedConfig = (type) => {
-  const stored = loadPersistedConfig(type);
-  if (stored) {
-    Object.keys(stored).forEach((key) => {
-      if (key !== "chartType") {
-        chartConfig[key] = stored[key];
-      }
-    });
+const warning = (content, title) => ElMessageBox.confirm(
+  content,
+  title,
+  {
+    type: "warning",
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
   }
-};
-
-// 保存配置到本地存储
-const saveConfig = () => {
-  const configToSave = { ...chartConfig };
-  delete configToSave.chartType;
-  persistConfig(chartConfig.chartType, configToSave);
-};
-
-// 监听配置变化，自动保存
-watch(
-  chartConfig,
-  () => {
-    saveConfig();
-  },
-  { deep: true }
-);
-
-// 监听图表类型变化
-watch(
-  () => props.chartType,
-  (newType) => {
-    chartConfig.chartType = newType;
-    initConfigDefaults(newType);
-    applyPersistedConfig(newType);
-    initCollapsedState();
-    applyDataForChartType(newType);
-  },
-  { immediate: true }
-);
-
-// 图表数据
-const chartData = computed(() =>
-  dataRows.value.map((item) => ({
-    label: item.label || "",
-    value: Number(item.value) || 0,
-  }))
-);
-
-const dataPreview = computed(() => dataRows.value.slice(0, 5));
-
-const openDataEditor = () => {
-  dataEditorVisible.value = true;
-};
-
-const handleDataSave = (rows) => {
-  const sanitized = rows.map((item, index) => ({
-    id: item.id ?? `${Date.now()}-${index}`,
-    label: item.label,
-    value: Number(item.value),
-  }));
-  dataRows.value = sanitized;
-  persistRows(chartConfig.chartType, sanitized);
-};
+)
 
 // 重置图表数据
 const handleResetData = async () => {
-  await ElMessageBox.confirm(
-    "重置后图表数据将恢复为默认示例，是否继续？",
-    "确认重置数据",
-    {
-      type: "warning",
-      confirmButtonText: "确定",
-      cancelButtonText: "取消",
-    }
-  );
-  const type = chartConfig.chartType;
-  clearPersistedRows(type);
-  dataRows.value = getDefaultRows(type);
+  await warning("重置后图表数据将恢复为默认示例，是否继续？", "确认重置数据");
+
+  resetData(chartConfig.chartType);
   ElMessage.success("图表数据已重置");
 };
 
 // 重置配置项
 const handleResetConfig = async () => {
-  await ElMessageBox.confirm(
-    "重置后配置项将恢复为默认值，是否继续？",
-    "确认重置配置",
-    {
-      type: "warning",
-      confirmButtonText: "确定",
-      cancelButtonText: "取消",
-    }
-  );
-  const type = chartConfig.chartType;
-  clearPersistedConfig(type);
-  const allFields = getAllConfigFields(type);
-  allFields.forEach((field) => {
-    if (field.type !== "action" && field.field in chartConfig) {
-      chartConfig[field.field] = field.default;
-    }
-  });
+  await warning("重置后配置项将恢复为默认值，是否继续？", "确认重置数据");
+
+  resetConfig(chartConfig.chartType);
   ElMessage.success("配置项已重置");
 };
 
 // 重置全部（数据 + 配置）
 const handleResetAll = async () => {
-  await ElMessageBox.confirm(
-    "重置后图表数据和配置项将全部恢复为默认状态，是否继续？",
-    "确认重置全部",
-    {
-      type: "warning",
-      confirmButtonText: "确定",
-      cancelButtonText: "取消",
-    }
-  );
+  await warning("重置后图表数据和配置项将全部恢复为默认状态，是否继续", "确认重置数据");
+
   const type = chartConfig.chartType;
-  // 重置数据
-  clearPersistedRows(type);
-  dataRows.value = getDefaultRows(type);
-  // 重置配置
-  clearPersistedConfig(type);
-  const allFields = getAllConfigFields(type);
-  allFields.forEach((field) => {
-    if (field.type !== "action" && field.field in chartConfig) {
-      chartConfig[field.field] = field.default;
-    }
-  });
+  resetData(type);
+  resetConfig(type);
   ElMessage.success("数据和配置已全部重置");
 };
 
 const handleFieldAction = async (field) => {
-
+  // 预留字段操作处理
 };
-
-// 生成折线图配置
-const buildLineOption = () => {
-  const xData = chartData.value.map((item) => item.label);
-  const yData = chartData.value.map((item) => item.value);
-
-  return {
-    xAxis: {
-      type: "category",
-      data: xData,
-      name: chartConfig.xAxisLabel || "",
-    },
-    yAxis: {
-      type: "value",
-      name: chartConfig.yAxisLabel || "",
-    },
-    series: [
-      {
-        type: "line",
-        data: yData,
-        smooth: chartConfig.smooth || false,
-        areaStyle: chartConfig.showArea
-          ? { opacity: chartConfig.areaOpacity || 0.3 }
-          : null,
-        lineStyle: {
-          width: chartConfig.lineWidth || 2,
-          color: chartConfig.lineColor || "#5470c6",
-        },
-        itemStyle: {
-          color: chartConfig.lineColor || "#5470c6",
-        },
-        showSymbol: chartConfig.showDataPoints !== false,
-        symbolSize: chartConfig.pointSize || 4,
-      },
-    ],
-  };
-};
-
-// 生成饼图配置
-const buildPieOption = () => {
-  const seriesData = chartData.value.map((item) => ({
-    name: item.label,
-    value: item.value,
-  }));
-
-  // 标签格式化
-  const getLabelFormatter = () => {
-    const format = chartConfig.labelFormatter || "name";
-    switch (format) {
-      case "value":
-        return "{c}";
-      case "percent":
-        return "{d}%";
-      case "name-value":
-        return "{b}: {c}";
-      case "name-percent":
-        return "{b}: {d}%";
-      default:
-        return "{b}";
-    }
-  };
-
-  return {
-    series: [
-      {
-        type: "pie",
-        data: seriesData,
-        radius: [
-          `${chartConfig.innerRadius || 0}%`,
-          `${chartConfig.outerRadius || 70}%`,
-        ],
-        roseType:
-          chartConfig.roseType === "none" ? false : chartConfig.roseType,
-        label: {
-          show: chartConfig.showLabel !== false,
-          position: chartConfig.labelPosition || "outside",
-          formatter: getLabelFormatter(),
-        },
-        itemStyle: {
-          borderRadius: chartConfig.borderRadius || 0,
-          borderWidth: chartConfig.borderWidth || 0,
-          borderColor: "#fff",
-        },
-      },
-    ],
-  };
-};
-
-// 生成 ECharts option
-const chartOption = computed(() => {
-  // 公共配置
-  const baseOption = {
-    title: {
-      show: chartConfig.showTitle !== false,
-      text: chartConfig.title || "",
-      left: chartConfig.titlePosition || "left",
-    },
-    tooltip: {
-      trigger: props.chartType === "pie" ? "item" : "axis",
-    },
-    legend: {
-      show: chartConfig.showLegend !== false,
-      orient:
-        chartConfig.legendPosition === "left"
-        || chartConfig.legendPosition === "right"
-          ? "vertical"
-          : "horizontal",
-      left:
-        chartConfig.legendPosition === "left"
-          ? "left"
-          : chartConfig.legendPosition === "right"
-            ? "right"
-            : "center",
-      top:
-        chartConfig.legendPosition === "bottom"
-          ? "bottom"
-          : chartConfig.legendPosition === "left"
-            || chartConfig.legendPosition === "right"
-            ? "middle"
-            : "top",
-    },
-    backgroundColor: chartConfig.backgroundColor || "#ffffff",
-  };
-
-  // 根据图表类型合并特定配置
-  const specificOption
-    = props.chartType === "pie" ? buildPieOption() : buildLineOption();
-
-  return { ...baseOption, ...specificOption };
-});
-
-const chartSize = computed(() => ({
-  width: Number(chartConfig.chartWidth) || 600,
-  height: Number(chartConfig.chartHeight) || 400,
-}));
 
 defineExpose({
   chartOption,
@@ -369,13 +94,15 @@ defineExpose({
     <div class="config-panel__section">
       <div class="config-panel__title">
         配置面板
+        <span>
+          <el-button size="small" @click="handleResetConfig">
+            重置配置
+          </el-button>
+          <el-button size="small" type="danger" plain @click="handleResetAll">
+            重置全部
+          </el-button>
+        </span>
       </div>
-      <el-button size="small" @click="handleResetConfig">
-        重置配置
-      </el-button>
-      <el-button size="small" type="danger" plain @click="handleResetAll">
-        重置全部
-      </el-button>
     </div>
 
     <div class="config-panel__section config-panel__data-section">
