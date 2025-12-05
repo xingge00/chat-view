@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 import { ElMessage } from "element-plus";
 import ConfigPanel from "./components/ConfigPanel.vue";
 import ChartTypeSidebar from "./components/ChartTypeSidebar.vue";
-import VChart from "@/components/vchart.vue";
+import VChart from "@/components/VChart.vue";
 
 const chartViewRef = ref(null);
 const configPanelRef = ref(null);
