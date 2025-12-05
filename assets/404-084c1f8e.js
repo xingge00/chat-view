@@ -1,1 +1,0 @@
-import{_ as n,b as s,o as r,i as a,g as l,e as u,f as d,F as f,h as i}from"./index-e44dfc50.js";const m={};function p(t,e){const o=s("el-button");return r(),a(f,null,[l(o,{onClick:e[0]||(e[0]=_=>t.$router.push("/"))},{default:u(()=>[...e[1]||(e[1]=[i(" 返回主页 ",-1)])]),_:1}),e[2]||(e[2]=d("div",null,"404",-1))],64)}const x=n(m,[["render",p]]);export{x as default};

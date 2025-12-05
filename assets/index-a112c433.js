@@ -1,1 +1,0 @@
-import{J as e,o as _,i as n,_ as t}from"./index-e44dfc50.js";const o={__name:"index",setup(a){return e(()=>{}),(s,c)=>(_(),n("div",null," 123 "))}};const p=t(o,[["__scopeId","data-v-0d3a2ee3"]]);export{p as default};
